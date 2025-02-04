@@ -224,7 +224,7 @@ export class LambdaStack extends cdk.Stack {
       handler: handler,
       code: lambda.Code.fromBucket(this.lambdaBucket, "lambda.zip"),
       memorySize: 1024,
-      timeout: cdk.Duration.seconds(15),
+      timeout: cdk.Duration.minutes(1),
       role,
       environment,
       vpc,
