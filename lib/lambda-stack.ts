@@ -118,8 +118,10 @@ export class LambdaStack extends cdk.Stack {
       SNS_EMAIL_TOPIC_ARN: emailTopic.topicArn,
       PUSH_APP_ARN: process.env.PUSH_APP_ARN || "",
       LLM_CLIENT: process.env.LLM_CLIENT || "",
-      LLM_API_KEY: process.env.LLM_API_KEY || "",
-      LLM_MODEL: process.env.LLM_MODEL || "",
+      ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || "",
+      ANTHROPIC_MODEL: process.env.ANTHROPIC_MODEL || "",
+      OPENAI_API_KEY: process.env.OPENAI_API_KEY || "",
+      OPENAI_MODEL: process.env.OPENAI_MODEL || "",
     };
 
     this.lambdaFunction = this.createLambdaFunction(
