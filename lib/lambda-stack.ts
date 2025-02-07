@@ -122,6 +122,7 @@ export class LambdaStack extends cdk.Stack {
       ANTHROPIC_MODEL: process.env.ANTHROPIC_MODEL || "",
       OPENAI_API_KEY: process.env.OPENAI_API_KEY || "",
       OPENAI_MODEL: process.env.OPENAI_MODEL || "",
+      AMPLITUDE_API_KEY: process.env.AMPLITUDE_API_KEY || "",
     };
 
     this.lambdaFunction = this.createLambdaFunction(
@@ -226,7 +227,7 @@ export class LambdaStack extends cdk.Stack {
       handler: handler,
       code: lambda.Code.fromBucket(this.lambdaBucket, "lambda.zip"),
       memorySize: 1024,
-      timeout: cdk.Duration.minutes(1),
+      timeout: cdk.Duration.minutes(2),
       role,
       environment,
       vpc,
