@@ -14,11 +14,17 @@ export class PipelineStack extends cdk.Stack {
       lambdaBucket: s3.Bucket;
       lambdaFunction: lambda.Function;
       migrationLambdaFunction: lambda.Function;
+      cleanUpLambdaFunction: lambda.Function;
     }
   ) {
     super(scope, id, props);
 
-    const { lambdaBucket, lambdaFunction, migrationLambdaFunction } = props;
+    const {
+      lambdaBucket,
+      lambdaFunction,
+      migrationLambdaFunction,
+      cleanUpLambdaFunction,
+    } = props;
 
     const sourceArtifact = new codepipeline.Artifact();
     const sourceAction = new codepipelineActions.GitHubSourceAction({
@@ -56,6 +62,13 @@ export class PipelineStack extends cdk.Stack {
       sourceArtifact
     );
 
+    const uploadCleanUpCodeAction = this.uploadBucketCodeToLambdaAction(
+      lambdaBucket,
+      cleanUpLambdaFunction,
+      "UploadCleanUpCodeToLambda",
+      sourceArtifact
+    );
+
     const pipeline = new codepipeline.Pipeline(this, "NestJsPipeline", {
       pipelineName: "NestJsPipeline",
       stages: [
@@ -78,6 +91,10 @@ export class PipelineStack extends cdk.Stack {
         {
           stageName: "Upload_App_Code",
           actions: [uploadAppCodeAction],
+        },
+        {
+          stageName: "Upload_Clean_Up_Code",
+          actions: [uploadCleanUpCodeAction],
         },
       ],
     });
@@ -104,14 +121,16 @@ export class PipelineStack extends cdk.Stack {
           },
           build: {
             commands: [
-              "npm run build",
+              " ",
               "npm run build:migrate",
+              "npm run build:cleanup",
               "npm run build:transform",
               "node dist/transform.js",
               "mv dist/lambda.js ./",
               "mv dist/migrate.js ./",
+              "mv dist/cleanup.js ./",
               "mv dist/migrations ./",
-              "zip -r lambda.zip lambda.js migrate.js node_modules package.json package-lock.json migrations",
+              "zip -r lambda.zip lambda.js migrate.js cleanup.js node_modules package.json package-lock.json migrations",
               "aws s3 cp lambda.zip s3://$LAMBDA_BUCKET_NAME/lambda.zip",
             ],
           },

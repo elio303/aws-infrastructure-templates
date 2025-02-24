@@ -13,6 +13,7 @@ export class LambdaStack extends cdk.Stack {
   public readonly lambdaBucket: s3.Bucket;
   public readonly lambdaFunction: lambda.Function;
   public readonly migrationLambdaFunction: lambda.Function;
+  public readonly cleanUpLambdaFunction: lambda.Function;
 
   constructor(
     scope: cdk.App,
@@ -22,6 +23,8 @@ export class LambdaStack extends cdk.Stack {
       userPoolId: string;
       userPoolClientId: string;
       rdsInstance: rds.DatabaseInstance;
+      rdsProxy: rds.DatabaseProxy;
+      rdsSecret: rds.DatabaseSecret;
       dbms: string;
       dbUser: string;
       dbName: string;
@@ -36,6 +39,8 @@ export class LambdaStack extends cdk.Stack {
       userPoolId,
       userPoolClientId,
       rdsInstance,
+      rdsProxy,
+      rdsSecret,
       dbms,
       dbUser,
       dbName,
@@ -65,25 +70,29 @@ export class LambdaStack extends cdk.Stack {
     const migrationLambdaRole = this.createLambdaRole(
       "MigrationLambdaExecutionRole"
     );
+    const cleanUpLambdaRole = this.createLambdaRole(
+      "CleanUpLambdaExecutionRole"
+    );
 
     this.lambdaBucket.grantReadWrite(lambdaRole);
-    this.lambdaBucket.grantReadWrite(migrationLambdaRole);
 
     rdsInstance.grantConnect(lambdaRole);
     rdsInstance.grantConnect(migrationLambdaRole);
+    rdsInstance.grantConnect(cleanUpLambdaRole);
+
+    rdsInstance.secret?.grantRead(lambdaRole);
+    rdsInstance.secret?.grantRead(migrationLambdaRole);
+    rdsInstance.secret?.grantRead(cleanUpLambdaRole);
 
     emailTopic.grantPublish(lambdaRole);
     emailTopic.grantSubscribe(lambdaRole);
-    emailTopic.grantPublish(migrationLambdaRole);
-    emailTopic.grantSubscribe(migrationLambdaRole);
 
-    this.grantRoleAccessToNetworkInterfaces(lambdaRole);
     this.grantRoleAccessToCognito(lambdaRole, userPoolId);
     this.grantRoleAccessToPushApplication(platformTopic, lambdaRole);
 
+    this.grantRoleAccessToNetworkInterfaces(lambdaRole);
     this.grantRoleAccessToNetworkInterfaces(migrationLambdaRole);
-    this.grantRoleAccessToCognito(migrationLambdaRole, userPoolId);
-    this.grantRoleAccessToPushApplication(platformTopic, migrationLambdaRole);
+    this.grantRoleAccessToNetworkInterfaces(cleanUpLambdaRole);
 
     const { secret, dbInstanceEndpointAddress, dbInstanceEndpointPort } =
       rdsInstance;
@@ -100,13 +109,19 @@ export class LambdaStack extends cdk.Stack {
       true,
       "MigrationLambdaSecurityGroup"
     );
+    const cleanUpLambdaSecurityGroup = this.createLambdaSecurityGroup(
+      vpc,
+      true,
+      "CleanUpLambdaSecurityGroup"
+    );
 
     const environment = {
       COGNITO_USER_POOL_ID: userPoolId,
       COGNITO_APP_CLIENT_ID: userPoolClientId,
       DB_TYPE: dbms,
-      DB_HOST: dbInstanceEndpointAddress,
+      DB_HOST: rdsProxy.endpoint,
       DB_PORT: dbInstanceEndpointPort,
+      DB_SECRET_ARN: rdsSecret.secretArn,
       DB_USER: dbUser,
       DB_PASS: dbPass,
       DB_NAME: dbName,
@@ -141,9 +156,18 @@ export class LambdaStack extends cdk.Stack {
       "MigrationLambda",
       "migrate.handler"
     );
+    this.cleanUpLambdaFunction = this.createLambdaFunction(
+      cleanUpLambdaRole,
+      environment,
+      vpc,
+      cleanUpLambdaSecurityGroup,
+      "CleanUpLambda",
+      "cleanup.handler"
+    );
 
     this.lambdaFunction.node.addDependency(deployLambdaCode);
     this.migrationLambdaFunction.node.addDependency(deployLambdaCode);
+    this.cleanUpLambdaFunction.node.addDependency(deployLambdaCode);
 
     // API Gateway Integration with Lambda
     const api = new apigateway.RestApi(this, "NestJsApi", {
@@ -251,9 +275,18 @@ export class LambdaStack extends cdk.Stack {
     vpc: ec2.Vpc,
     allowOutbound: boolean,
     name: string
-  ) =>
-    new ec2.SecurityGroup(this, name, {
+  ) => {
+    const sg = new ec2.SecurityGroup(this, name, {
       vpc,
       allowAllOutbound: allowOutbound,
     });
+
+    sg.addEgressRule(
+      ec2.Peer.anyIpv4(),
+      ec2.Port.tcp(5432),
+      "Allow Lambda to access RDS Proxy"
+    );
+
+    return sg;
+  };
 }

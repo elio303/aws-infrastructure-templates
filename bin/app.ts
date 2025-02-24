@@ -7,6 +7,7 @@ import { RdsStack } from "../lib/rds-stack";
 import { PipelineStack } from "../lib/pipeline-stack";
 import * as dotenv from "dotenv";
 import { SnsStack } from "../lib/sns-stack";
+import { EventBridgeStack } from "../lib/event-bridge";
 
 const awsProfile = process.env.AWS_PROFILE || "default";
 const envFilePath = `.env.${awsProfile}`;
@@ -34,6 +35,8 @@ const lambdaApiStack = new LambdaStack(app, "LambdaStack", {
   userPoolId: cognitoStack.userPoolId,
   userPoolClientId: cognitoStack.userPoolClientId,
   rdsInstance: rdsStack.rdsInstance,
+  rdsSecret: rdsStack.rdsSecret,
+  rdsProxy: rdsStack.rdsProxy,
   dbms: rdsStack.dbms,
   dbUser: dbUser,
   dbName: rdsStack.dbName,
@@ -41,9 +44,15 @@ const lambdaApiStack = new LambdaStack(app, "LambdaStack", {
   platformTopic: snsStack.platformTopic,
 });
 
-// Step 6: Create the Pipeline
+// Step 6: Create Event Bridge
+const eventBridgeStack = new EventBridgeStack(app, "EventBridgeStack", {
+  cleanUpLambdaFunction: lambdaApiStack.cleanUpLambdaFunction,
+});
+
+// Step 7: Create the Pipeline
 const pipelineStack = new PipelineStack(app, "PipelineStack", {
   lambdaBucket: lambdaApiStack.lambdaBucket,
   lambdaFunction: lambdaApiStack.lambdaFunction,
   migrationLambdaFunction: lambdaApiStack.migrationLambdaFunction,
+  cleanUpLambdaFunction: lambdaApiStack.cleanUpLambdaFunction,
 });
