@@ -47,7 +47,7 @@ export class RdsStack extends cdk.Stack {
       engine,
       vpc,
       vpcSubnets: {
-        subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS,
+        subnetType: ec2.SubnetType.PRIVATE_ISOLATED,
       },
       parameterGroup: this.disableSslParameterGroup(engine),
       securityGroups: [rdsSecurityGroup],
@@ -78,6 +78,7 @@ export class RdsStack extends cdk.Stack {
       secrets: [this.rdsSecret],
       securityGroups: [rdsSecurityGroup],
       iamAuth: true,
+      debugLogging: true,
     });
   }
 

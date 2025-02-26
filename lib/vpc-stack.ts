@@ -1,5 +1,6 @@
 import * as cdk from "aws-cdk-lib";
 import * as ec2 from "aws-cdk-lib/aws-ec2";
+import * as rds from "aws-cdk-lib/aws-rds";
 
 export class VpcStack extends cdk.Stack {
   public readonly vpc: ec2.Vpc;
@@ -15,8 +16,8 @@ export class VpcStack extends cdk.Stack {
           subnetType: ec2.SubnetType.PUBLIC,
         },
         {
-          name: "private-subnet",
-          subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS,
+          name: "isolated-subnet",
+          subnetType: ec2.SubnetType.PRIVATE_ISOLATED,
         },
       ],
     });
