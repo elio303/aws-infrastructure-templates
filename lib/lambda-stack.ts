@@ -73,14 +73,6 @@ export class LambdaStack extends cdk.Stack {
 
     this.lambdaBucket.grantReadWrite(lambdaRole);
 
-    rdsInstance.grantConnect(lambdaRole);
-    rdsInstance.grantConnect(migrationLambdaRole);
-    rdsInstance.grantConnect(cleanUpLambdaRole);
-
-    rdsInstance.secret?.grantRead(lambdaRole);
-    rdsInstance.secret?.grantRead(migrationLambdaRole);
-    rdsInstance.secret?.grantRead(cleanUpLambdaRole);
-
     rdsProxy.grantConnect(lambdaRole);
     rdsProxy.grantConnect(migrationLambdaRole);
     rdsProxy.grantConnect(cleanUpLambdaRole);
@@ -95,13 +87,7 @@ export class LambdaStack extends cdk.Stack {
     this.grantRoleAccessToNetworkInterfaces(migrationLambdaRole);
     this.grantRoleAccessToNetworkInterfaces(cleanUpLambdaRole);
 
-    this.grantRoleAccessToRDS(lambdaRole, dbUser);
-    this.grantRoleAccessToRDS(migrationLambdaRole, dbUser);
-    this.grantRoleAccessToRDS(cleanUpLambdaRole, dbUser);
-
-    const { secret, dbInstanceEndpointPort } = rdsInstance;
-
-    const dbPass = secret?.secretValueFromJson("password").unsafeUnwrap() || "";
+    const { dbInstanceEndpointPort } = rdsInstance;
 
     const environment = {
       COGNITO_USER_POOL_ID: userPoolId,
@@ -111,7 +97,6 @@ export class LambdaStack extends cdk.Stack {
       DB_PORT: dbInstanceEndpointPort,
       DB_SECRET_ARN: rdsSecret.secretArn,
       DB_USER: dbUser,
-      DB_PASS: dbPass,
       DB_NAME: dbName,
       DB_SYNC: process.env.DB_SYNC || "false",
       DB_SSL: process.env.DB_SSL || "true",
@@ -170,17 +155,6 @@ export class LambdaStack extends cdk.Stack {
     const proxyResource = apiResource.addResource("{proxy+}");
     proxyResource.addMethod("ANY", lambdaIntegration); // Accepts any HTTP method (GET, POST, PUT, etc.)
   }
-
-  private grantRoleAccessToRDS = (role: iam.Role, dbUser: string) => {
-    role.addToPolicy(
-      new iam.PolicyStatement({
-        actions: ["rds-db:connect"],
-        resources: [
-          `arn:aws:rds-db:${this.region}:${this.account}:dbuser:${dbUser}`,
-        ],
-      })
-    );
-  };
 
   private grantRoleAccessToCognito = (role: iam.Role, userPoolId: string) => {
     role.addToPolicy(
