@@ -99,6 +99,22 @@ export class LambdaStack extends cdk.Stack {
       })
     );
 
+    const lambdaSecurityGroup = this.createLambdaSecurityGroup(
+      vpc,
+      true,
+      "LambdaSecurityGroup"
+    );
+    const migrationLambdaSecurityGroup = this.createLambdaSecurityGroup(
+      vpc,
+      true,
+      "MigrationLambdaSecurityGroup"
+    );
+    const cleanupLambdaSecurityGroup = this.createLambdaSecurityGroup(
+      vpc,
+      true,
+      "CleanupLambdaSecurityGroup"
+    );
+
     const { secret, dbInstanceEndpointPort, dbInstanceEndpointAddress } =
       rdsInstance;
 
@@ -131,6 +147,7 @@ export class LambdaStack extends cdk.Stack {
 
     this.lambdaFunction = this.createLambdaFunction(
       vpc,
+      lambdaSecurityGroup,
       lambdaRole,
       environment,
       "DeployedLambda",
@@ -138,6 +155,7 @@ export class LambdaStack extends cdk.Stack {
     );
     this.migrationLambdaFunction = this.createLambdaFunction(
       vpc,
+      migrationLambdaSecurityGroup,
       migrationLambdaRole,
       environment,
       "MigrationLambda",
@@ -145,6 +163,7 @@ export class LambdaStack extends cdk.Stack {
     );
     this.cleanUpLambdaFunction = this.createLambdaFunction(
       vpc,
+      cleanupLambdaSecurityGroup,
       cleanUpLambdaRole,
       environment,
       "CleanUpLambda",
@@ -226,6 +245,7 @@ export class LambdaStack extends cdk.Stack {
 
   private createLambdaFunction = (
     vpc: ec2.Vpc,
+    securityGroup: ec2.SecurityGroup,
     role: iam.Role,
     environment: { [key: string]: string },
     name: string,
@@ -233,6 +253,10 @@ export class LambdaStack extends cdk.Stack {
   ) =>
     new lambda.Function(this, name, {
       vpc,
+      securityGroups: [securityGroup],
+      vpcSubnets: {
+        subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS,
+      },
       runtime: lambda.Runtime.NODEJS_18_X,
       handler: handler,
       code: lambda.Code.fromBucket(this.lambdaBucket, "lambda.zip"),
@@ -250,5 +274,15 @@ export class LambdaStack extends cdk.Stack {
           "service-role/AWSLambdaBasicExecutionRole"
         ),
       ],
+    });
+
+  private createLambdaSecurityGroup = (
+    vpc: ec2.Vpc,
+    allowOutbound: boolean,
+    name: string
+  ) =>
+    new ec2.SecurityGroup(this, name, {
+      vpc,
+      allowAllOutbound: allowOutbound,
     });
 }
