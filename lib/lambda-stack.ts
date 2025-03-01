@@ -23,7 +23,6 @@ export class LambdaStack extends cdk.Stack {
       userPoolId: string;
       userPoolClientId: string;
       rdsInstance: rds.DatabaseInstance;
-      rdsProxy: rds.DatabaseProxy;
       rdsSecret: rds.DatabaseSecret;
       dbms: string;
       dbUser: string;
@@ -39,7 +38,6 @@ export class LambdaStack extends cdk.Stack {
       userPoolId,
       userPoolClientId,
       rdsInstance,
-      rdsProxy,
       rdsSecret,
       dbms,
       dbUser,
@@ -80,10 +78,6 @@ export class LambdaStack extends cdk.Stack {
     rdsSecret.grantRead(migrationLambdaRole);
     rdsSecret.grantRead(cleanUpLambdaRole);
 
-    rdsProxy.grantConnect(lambdaRole);
-    rdsProxy.grantConnect(migrationLambdaRole);
-    rdsProxy.grantConnect(cleanUpLambdaRole);
-
     rdsInstance.grantConnect(lambdaRole);
     rdsInstance.grantConnect(migrationLambdaRole);
     rdsInstance.grantConnect(cleanUpLambdaRole);
@@ -98,16 +92,27 @@ export class LambdaStack extends cdk.Stack {
     this.grantRoleAccessToNetworkInterfaces(migrationLambdaRole);
     this.grantRoleAccessToNetworkInterfaces(cleanUpLambdaRole);
 
-    const { dbInstanceEndpointPort } = rdsInstance;
+    migrationLambdaRole.addToPolicy(
+      new iam.PolicyStatement({
+        actions: ["states:SendTaskSuccess", "states:SendTaskFailure"],
+        resources: ["*"],
+      })
+    );
+
+    const { secret, dbInstanceEndpointPort, dbInstanceEndpointAddress } =
+      rdsInstance;
+
+    const dbPass = secret?.secretValueFromJson("password").unsafeUnwrap() || "";
 
     const environment = {
       COGNITO_USER_POOL_ID: userPoolId,
       COGNITO_APP_CLIENT_ID: userPoolClientId,
       DB_TYPE: dbms,
-      DB_HOST: rdsProxy.endpoint,
+      DB_HOST: dbInstanceEndpointAddress,
       DB_PORT: dbInstanceEndpointPort,
       DB_SECRET_ARN: rdsSecret.secretArn,
       DB_USER: dbUser,
+      DB_PASS: dbPass,
       DB_NAME: dbName,
       DB_SYNC: process.env.DB_SYNC || "false",
       DB_SSL: process.env.DB_SSL || "true",

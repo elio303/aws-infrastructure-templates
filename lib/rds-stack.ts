@@ -5,7 +5,6 @@ import * as iam from "aws-cdk-lib/aws-iam";
 
 export class RdsStack extends cdk.Stack {
   public readonly rdsInstance: rds.DatabaseInstance;
-  public readonly rdsProxy: rds.DatabaseProxy;
   public readonly rdsSecret: rds.DatabaseSecret;
   public readonly dbms: string = "postgres";
   public readonly dbName: string = "pgdb";
@@ -21,15 +20,6 @@ export class RdsStack extends cdk.Stack {
     super(scope, id, props);
 
     const { vpc, dbUser } = props;
-
-    const proxySecurityGroup = new ec2.SecurityGroup(
-      this,
-      "ProxySecurityGroup",
-      {
-        vpc,
-        allowAllOutbound: true,
-      }
-    );
 
     const rdsSecurityGroup = new ec2.SecurityGroup(this, "RdsSecurityGroup", {
       vpc,
@@ -52,7 +42,7 @@ export class RdsStack extends cdk.Stack {
       },
       parameterGroup: this.disableSslParameterGroup(engine),
       securityGroups: [rdsSecurityGroup],
-      credentials: rds.Credentials.fromSecret(this.rdsSecret),
+      credentials: rds.Credentials.fromGeneratedSecret(dbUser),
       allocatedStorage: 20,
       instanceType: ec2.InstanceType.of(
         ec2.InstanceClass.T3,
@@ -60,43 +50,14 @@ export class RdsStack extends cdk.Stack {
       ),
       publiclyAccessible: true,
       databaseName: this.dbName,
-      removalPolicy: cdk.RemovalPolicy.RETAIN,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
-
-    proxySecurityGroup.addIngressRule(
-      ec2.Peer.anyIpv4(),
-      ec2.Port.allTraffic(),
-      "Allow external traffic to RDS Proxy"
-    );
 
     rdsSecurityGroup.addIngressRule(
       ec2.Peer.anyIpv4(),
       ec2.Port.allTraffic(),
-      "Allow Proxy to access RDS"
+      "Allow Lambda to access RDS"
     );
-
-    const proxyRole = new iam.Role(this, "RdsProxyRole", {
-      assumedBy: new iam.ServicePrincipal("rds.amazonaws.com"),
-    });
-
-    proxyRole.addManagedPolicy(
-      iam.ManagedPolicy.fromAwsManagedPolicyName("AmazonRDSFullAccess")
-    );
-
-    this.rdsInstance.grantConnect(proxyRole);
-    this.rdsInstance.secret?.grantRead(proxyRole);
-
-    this.rdsProxy = new rds.DatabaseProxy(this, "RdsProxyInstance", {
-      vpc,
-      vpcSubnets: {
-        subnetType: ec2.SubnetType.PUBLIC,
-      },
-      proxyTarget: rds.ProxyTarget.fromInstance(this.rdsInstance),
-      secrets: [this.rdsSecret],
-      securityGroups: [proxySecurityGroup],
-      iamAuth: true,
-      debugLogging: true,
-    });
   }
 
   private disableSslParameterGroup = (engine: rds.IInstanceEngine) =>
