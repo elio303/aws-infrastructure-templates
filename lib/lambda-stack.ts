@@ -7,6 +7,7 @@ import * as path from "path";
 import * as apigateway from "aws-cdk-lib/aws-apigateway";
 import * as rds from "aws-cdk-lib/aws-rds";
 import * as sns from "aws-cdk-lib/aws-sns";
+import * as ec2 from "aws-cdk-lib/aws-ec2";
 
 export class LambdaStack extends cdk.Stack {
   public readonly lambdaBucket: s3.Bucket;
@@ -18,6 +19,7 @@ export class LambdaStack extends cdk.Stack {
     scope: cdk.App,
     id: string,
     props: cdk.StackProps & {
+      vpc: ec2.Vpc;
       userPoolId: string;
       userPoolClientId: string;
       rdsInstance: rds.DatabaseInstance;
@@ -33,6 +35,7 @@ export class LambdaStack extends cdk.Stack {
     super(scope, id, props);
 
     const {
+      vpc,
       userPoolId,
       userPoolClientId,
       rdsInstance,
@@ -73,9 +76,17 @@ export class LambdaStack extends cdk.Stack {
 
     this.lambdaBucket.grantReadWrite(lambdaRole);
 
+    rdsSecret.grantRead(lambdaRole);
+    rdsSecret.grantRead(migrationLambdaRole);
+    rdsSecret.grantRead(cleanUpLambdaRole);
+
     rdsProxy.grantConnect(lambdaRole);
     rdsProxy.grantConnect(migrationLambdaRole);
     rdsProxy.grantConnect(cleanUpLambdaRole);
+
+    rdsInstance.grantConnect(lambdaRole);
+    rdsInstance.grantConnect(migrationLambdaRole);
+    rdsInstance.grantConnect(cleanUpLambdaRole);
 
     emailTopic.grantPublish(lambdaRole);
     emailTopic.grantSubscribe(lambdaRole);
@@ -114,18 +125,21 @@ export class LambdaStack extends cdk.Stack {
     };
 
     this.lambdaFunction = this.createLambdaFunction(
+      vpc,
       lambdaRole,
       environment,
       "DeployedLambda",
       "lambda.handler"
     );
     this.migrationLambdaFunction = this.createLambdaFunction(
+      vpc,
       migrationLambdaRole,
       environment,
       "MigrationLambda",
       "migrate.handler"
     );
     this.cleanUpLambdaFunction = this.createLambdaFunction(
+      vpc,
       cleanUpLambdaRole,
       environment,
       "CleanUpLambda",
@@ -206,12 +220,14 @@ export class LambdaStack extends cdk.Stack {
   };
 
   private createLambdaFunction = (
+    vpc: ec2.Vpc,
     role: iam.Role,
     environment: { [key: string]: string },
     name: string,
     handler: string
   ) =>
     new lambda.Function(this, name, {
+      vpc,
       runtime: lambda.Runtime.NODEJS_18_X,
       handler: handler,
       code: lambda.Code.fromBucket(this.lambdaBucket, "lambda.zip"),

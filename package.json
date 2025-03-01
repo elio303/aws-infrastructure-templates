@@ -18,6 +18,7 @@
     "typescript": "~5.6.3"
   },
   "dependencies": {
+    "@aws-cdk/aws-apigatewayv2": "^1.204.0",
     "@aws-cdk/aws-events": "^1.204.0",
     "@aws-cdk/aws-events-targets": "^1.204.0",
     "aws-cdk-lib": "^2.174.0",

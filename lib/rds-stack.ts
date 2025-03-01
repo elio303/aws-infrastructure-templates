@@ -36,13 +36,6 @@ export class RdsStack extends cdk.Stack {
       allowAllOutbound: true,
     });
 
-    // Only allow inbound traffic from the Proxy Security Group
-    rdsSecurityGroup.addIngressRule(
-      proxySecurityGroup,
-      ec2.Port.tcp(5432),
-      "Allow inbound traffic to RDS from Proxy"
-    );
-
     const engine = rds.DatabaseInstanceEngine.postgres({
       version: rds.PostgresEngineVersion.VER_17_2,
     });
@@ -51,14 +44,13 @@ export class RdsStack extends cdk.Stack {
       username: dbUser,
     });
 
-    // Create RDS Instance in an ISOLATED subnet
     this.rdsInstance = new rds.DatabaseInstance(this, "MyPostgresDatabase", {
       engine,
       vpc,
       vpcSubnets: {
-        subnetType: ec2.SubnetType.PRIVATE_ISOLATED, // Isolated subnet for RDS
+        subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS,
       },
-      // parameterGroup: this.disableSslParameterGroup(engine),
+      parameterGroup: this.disableSslParameterGroup(engine),
       securityGroups: [rdsSecurityGroup],
       credentials: rds.Credentials.fromSecret(this.rdsSecret),
       allocatedStorage: 20,
@@ -66,26 +58,23 @@ export class RdsStack extends cdk.Stack {
         ec2.InstanceClass.T3,
         ec2.InstanceSize.MICRO
       ),
-      publiclyAccessible: false,
+      publiclyAccessible: true,
       databaseName: this.dbName,
-      removalPolicy: cdk.RemovalPolicy.DESTROY, // WARNING: Deletes DB when stack is removed
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
-    // Allow inbound connections from anywhere (or restrict this to Lambda IPs if needed)
     proxySecurityGroup.addIngressRule(
       ec2.Peer.anyIpv4(),
-      ec2.Port.tcp(5432),
+      ec2.Port.allTraffic(),
       "Allow external traffic to RDS Proxy"
     );
 
-    // Allow RDS Proxy to talk to RDS Instance
     rdsSecurityGroup.addIngressRule(
-      proxySecurityGroup,
-      ec2.Port.tcp(5432),
+      ec2.Peer.anyIpv4(),
+      ec2.Port.allTraffic(),
       "Allow Proxy to access RDS"
     );
 
-    // IAM Role for Proxy
     const proxyRole = new iam.Role(this, "RdsProxyRole", {
       assumedBy: new iam.ServicePrincipal("rds.amazonaws.com"),
     });
@@ -94,9 +83,9 @@ export class RdsStack extends cdk.Stack {
       iam.ManagedPolicy.fromAwsManagedPolicyName("AmazonRDSFullAccess")
     );
 
+    this.rdsInstance.grantConnect(proxyRole);
     this.rdsInstance.secret?.grantRead(proxyRole);
 
-    // Create RDS Proxy in a PUBLIC subnet
     this.rdsProxy = new rds.DatabaseProxy(this, "RdsProxyInstance", {
       vpc,
       vpcSubnets: {
