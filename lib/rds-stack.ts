@@ -24,6 +24,13 @@ export class RdsStack extends cdk.Stack {
       allowAllOutbound: true,
     });
 
+    // TODO: Limit the inbound traffic to only allowing necessary connections
+    rdsSecurityGroup.addIngressRule(
+      ec2.Peer.anyIpv4(),
+      ec2.Port.tcp(5432),
+      "Allow inbound traffic to RDS from VPC"
+    );
+
     const engine = rds.DatabaseInstanceEngine.postgres({
       version: rds.PostgresEngineVersion.VER_17_2,
     });
@@ -42,16 +49,10 @@ export class RdsStack extends cdk.Stack {
         ec2.InstanceClass.T3,
         ec2.InstanceSize.MICRO
       ),
-      publiclyAccessible: true,
+      publiclyAccessible: false,
       databaseName: this.dbName,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      removalPolicy: cdk.RemovalPolicy.DESTROY, // WARNING: This deletes the database when the stack is deleted
     });
-
-    rdsSecurityGroup.addIngressRule(
-      ec2.Peer.anyIpv4(),
-      ec2.Port.allTraffic(),
-      "Allow Lambda to access RDS"
-    );
   }
 
   private disableSslParameterGroup = (engine: rds.IInstanceEngine) =>
