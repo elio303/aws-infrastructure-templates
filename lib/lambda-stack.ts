@@ -1,3 +1,4 @@
+import * as ec2 from "aws-cdk-lib/aws-ec2";
 import * as cdk from "aws-cdk-lib";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import * as lambda from "aws-cdk-lib/aws-lambda";
@@ -7,7 +8,6 @@ import * as path from "path";
 import * as apigateway from "aws-cdk-lib/aws-apigateway";
 import * as rds from "aws-cdk-lib/aws-rds";
 import * as sns from "aws-cdk-lib/aws-sns";
-import * as ec2 from "aws-cdk-lib/aws-ec2";
 
 export class LambdaStack extends cdk.Stack {
   public readonly lambdaBucket: s3.Bucket;
@@ -23,7 +23,6 @@ export class LambdaStack extends cdk.Stack {
       userPoolId: string;
       userPoolClientId: string;
       rdsInstance: rds.DatabaseInstance;
-      rdsSecret: rds.DatabaseSecret;
       dbms: string;
       dbUser: string;
       dbName: string;
@@ -38,7 +37,6 @@ export class LambdaStack extends cdk.Stack {
       userPoolId,
       userPoolClientId,
       rdsInstance,
-      rdsSecret,
       dbms,
       dbUser,
       dbName,
@@ -73,10 +71,8 @@ export class LambdaStack extends cdk.Stack {
     );
 
     this.lambdaBucket.grantReadWrite(lambdaRole);
-
-    rdsSecret.grantRead(lambdaRole);
-    rdsSecret.grantRead(migrationLambdaRole);
-    rdsSecret.grantRead(cleanUpLambdaRole);
+    this.lambdaBucket.grantReadWrite(migrationLambdaRole);
+    this.lambdaBucket.grantReadWrite(cleanUpLambdaRole);
 
     rdsInstance.grantConnect(lambdaRole);
     rdsInstance.grantConnect(migrationLambdaRole);
@@ -84,20 +80,27 @@ export class LambdaStack extends cdk.Stack {
 
     emailTopic.grantPublish(lambdaRole);
     emailTopic.grantSubscribe(lambdaRole);
-
-    this.grantRoleAccessToCognito(lambdaRole, userPoolId);
-    this.grantRoleAccessToPushApplication(platformTopic, lambdaRole);
+    emailTopic.grantPublish(migrationLambdaRole);
+    emailTopic.grantSubscribe(migrationLambdaRole);
+    emailTopic.grantPublish(cleanUpLambdaRole);
+    emailTopic.grantSubscribe(cleanUpLambdaRole);
 
     this.grantRoleAccessToNetworkInterfaces(lambdaRole);
     this.grantRoleAccessToNetworkInterfaces(migrationLambdaRole);
     this.grantRoleAccessToNetworkInterfaces(cleanUpLambdaRole);
 
-    migrationLambdaRole.addToPolicy(
-      new iam.PolicyStatement({
-        actions: ["states:SendTaskSuccess", "states:SendTaskFailure"],
-        resources: ["*"],
-      })
-    );
+    this.grantRoleAccessToCognito(lambdaRole, userPoolId);
+    this.grantRoleAccessToCognito(migrationLambdaRole, userPoolId);
+    this.grantRoleAccessToCognito(cleanUpLambdaRole, userPoolId);
+
+    this.grantRoleAccessToPushApplication(platformTopic, lambdaRole);
+    this.grantRoleAccessToPushApplication(platformTopic, migrationLambdaRole);
+    this.grantRoleAccessToPushApplication(platformTopic, cleanUpLambdaRole);
+
+    const { secret, dbInstanceEndpointAddress, dbInstanceEndpointPort } =
+      rdsInstance;
+
+    const dbPass = secret?.secretValueFromJson("password").unsafeUnwrap() || "";
 
     const lambdaSecurityGroup = this.createLambdaSecurityGroup(
       vpc,
@@ -115,18 +118,12 @@ export class LambdaStack extends cdk.Stack {
       "CleanupLambdaSecurityGroup"
     );
 
-    const { secret, dbInstanceEndpointPort, dbInstanceEndpointAddress } =
-      rdsInstance;
-
-    const dbPass = secret?.secretValueFromJson("password").unsafeUnwrap() || "";
-
     const environment = {
       COGNITO_USER_POOL_ID: userPoolId,
       COGNITO_APP_CLIENT_ID: userPoolClientId,
       DB_TYPE: dbms,
       DB_HOST: dbInstanceEndpointAddress,
       DB_PORT: dbInstanceEndpointPort,
-      DB_SECRET_ARN: rdsSecret.secretArn,
       DB_USER: dbUser,
       DB_PASS: dbPass,
       DB_NAME: dbName,
@@ -146,27 +143,27 @@ export class LambdaStack extends cdk.Stack {
     };
 
     this.lambdaFunction = this.createLambdaFunction(
-      vpc,
-      lambdaSecurityGroup,
       lambdaRole,
       environment,
+      vpc,
+      lambdaSecurityGroup,
       "DeployedLambda",
       "lambda.handler"
     );
     this.migrationLambdaFunction = this.createLambdaFunction(
-      vpc,
-      migrationLambdaSecurityGroup,
       migrationLambdaRole,
       environment,
+      vpc,
+      migrationLambdaSecurityGroup,
       "MigrationLambda",
       "migrate.handler"
     );
     this.cleanUpLambdaFunction = this.createLambdaFunction(
+      migrationLambdaRole,
+      environment,
       vpc,
       cleanupLambdaSecurityGroup,
-      cleanUpLambdaRole,
-      environment,
-      "CleanUpLambda",
+      "CleanupLambda",
       "cleanup.handler"
     );
 
@@ -244,19 +241,14 @@ export class LambdaStack extends cdk.Stack {
   };
 
   private createLambdaFunction = (
-    vpc: ec2.Vpc,
-    securityGroup: ec2.SecurityGroup,
     role: iam.Role,
     environment: { [key: string]: string },
+    vpc: ec2.Vpc,
+    securityGroup: ec2.SecurityGroup,
     name: string,
     handler: string
   ) =>
     new lambda.Function(this, name, {
-      vpc,
-      securityGroups: [securityGroup],
-      vpcSubnets: {
-        subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS,
-      },
       runtime: lambda.Runtime.NODEJS_18_X,
       handler: handler,
       code: lambda.Code.fromBucket(this.lambdaBucket, "lambda.zip"),
@@ -264,6 +256,11 @@ export class LambdaStack extends cdk.Stack {
       timeout: cdk.Duration.minutes(2),
       role,
       environment,
+      vpc,
+      vpcSubnets: {
+        subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS,
+      },
+      securityGroups: [securityGroup],
     });
 
   private createLambdaRole = (name: string) =>

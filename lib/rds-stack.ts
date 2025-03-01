@@ -1,11 +1,9 @@
 import * as ec2 from "aws-cdk-lib/aws-ec2";
 import * as rds from "aws-cdk-lib/aws-rds";
 import * as cdk from "aws-cdk-lib";
-import * as iam from "aws-cdk-lib/aws-iam";
 
 export class RdsStack extends cdk.Stack {
   public readonly rdsInstance: rds.DatabaseInstance;
-  public readonly rdsSecret: rds.DatabaseSecret;
   public readonly dbms: string = "postgres";
   public readonly dbName: string = "pgdb";
 
@@ -28,10 +26,6 @@ export class RdsStack extends cdk.Stack {
 
     const engine = rds.DatabaseInstanceEngine.postgres({
       version: rds.PostgresEngineVersion.VER_17_2,
-    });
-
-    this.rdsSecret = new rds.DatabaseSecret(this, "DBSecret", {
-      username: dbUser,
     });
 
     this.rdsInstance = new rds.DatabaseInstance(this, "MyPostgresDatabase", {

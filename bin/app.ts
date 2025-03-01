@@ -38,7 +38,6 @@ const lambdaApiStack = new LambdaStack(app, "LambdaStack", {
   userPoolId: cognitoStack.userPoolId,
   userPoolClientId: cognitoStack.userPoolClientId,
   rdsInstance: rdsStack.rdsInstance,
-  rdsSecret: rdsStack.rdsSecret,
   dbms: rdsStack.dbms,
   dbUser: dbUser,
   dbName: rdsStack.dbName,
