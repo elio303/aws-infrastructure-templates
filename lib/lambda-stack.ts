@@ -8,6 +8,7 @@ import * as path from "path";
 import * as apigateway from "aws-cdk-lib/aws-apigateway";
 import * as rds from "aws-cdk-lib/aws-rds";
 import * as sns from "aws-cdk-lib/aws-sns";
+import * as logs from "aws-cdk-lib/aws-logs";
 
 export class LambdaStack extends cdk.Stack {
   public readonly lambdaBucket: s3.Bucket;
@@ -171,6 +172,19 @@ export class LambdaStack extends cdk.Stack {
     this.migrationLambdaFunction.node.addDependency(deployLambdaCode);
     this.cleanUpLambdaFunction.node.addDependency(deployLambdaCode);
 
+    const apiGatewayLogRole = new iam.Role(this, "ApiGatewayLogRole", {
+      assumedBy: new iam.ServicePrincipal("apigateway.amazonaws.com"),
+      managedPolicies: [
+        iam.ManagedPolicy.fromAwsManagedPolicyName(
+          "service-role/AmazonAPIGatewayPushToCloudWatchLogs"
+        ),
+      ],
+    });
+
+    new apigateway.CfnAccount(this, "ApiGatewayAccount", {
+      cloudWatchRoleArn: apiGatewayLogRole.roleArn,
+    });
+
     // API Gateway Integration with Lambda
     const api = new apigateway.RestApi(this, "NestJsApi", {
       restApiName: "NestJS API",
@@ -179,15 +193,27 @@ export class LambdaStack extends cdk.Stack {
         allowOrigins: apigateway.Cors.ALL_ORIGINS,
         allowMethods: apigateway.Cors.ALL_METHODS,
       },
+      deployOptions: {
+        loggingLevel: apigateway.MethodLoggingLevel.INFO,
+        dataTraceEnabled: true,
+        metricsEnabled: true,
+        accessLogDestination: new apigateway.LogGroupLogDestination(
+          new logs.LogGroup(this, "ApiGatewayAccessLogs", {
+            retention: logs.RetentionDays.ONE_WEEK,
+            removalPolicy: cdk.RemovalPolicy.DESTROY,
+          })
+        ),
+        accessLogFormat: apigateway.AccessLogFormat.jsonWithStandardFields(),
+      },
     });
+
     const lambdaIntegration = new apigateway.LambdaIntegration(
       this.lambdaFunction,
       {
         proxy: true,
       }
     );
-    const apiResource = api.root.addResource("api");
-    const proxyResource = apiResource.addResource("{proxy+}");
+    const proxyResource = api.root.addResource("{proxy+}");
     proxyResource.addMethod("ANY", lambdaIntegration); // Accepts any HTTP method (GET, POST, PUT, etc.)
   }
 
