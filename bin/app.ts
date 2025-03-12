@@ -34,7 +34,6 @@ const rdsStack = new RdsStack(app, "RdsStack", {
 
 // Step 5: Create the Lambda Stack
 const lambdaApiStack = new LambdaStack(app, "LambdaStack", {
-  vpc: vpcStack.vpc,
   userPoolId: cognitoStack.userPoolId,
   userPoolClientId: cognitoStack.userPoolClientId,
   rdsInstance: rdsStack.rdsInstance,

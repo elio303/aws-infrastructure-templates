@@ -39,7 +39,7 @@ export class RdsStack extends cdk.Stack {
       engine,
       vpc,
       vpcSubnets: {
-        subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS,
+        subnetType: ec2.SubnetType.PUBLIC,
       },
       parameterGroup: this.disableSslParameterGroup(engine),
       securityGroups: [rdsSecurityGroup],
@@ -49,7 +49,7 @@ export class RdsStack extends cdk.Stack {
         ec2.InstanceClass.T3,
         ec2.InstanceSize.MICRO
       ),
-      publiclyAccessible: false,
+      publiclyAccessible: true,
       databaseName: this.dbName,
       removalPolicy: cdk.RemovalPolicy.DESTROY, // WARNING: This deletes the database when the stack is deleted
     });

@@ -1,4 +1,3 @@
-import * as ec2 from "aws-cdk-lib/aws-ec2";
 import * as cdk from "aws-cdk-lib";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import * as lambda from "aws-cdk-lib/aws-lambda";
@@ -20,7 +19,6 @@ export class LambdaStack extends cdk.Stack {
     scope: cdk.App,
     id: string,
     props: cdk.StackProps & {
-      vpc: ec2.Vpc;
       userPoolId: string;
       userPoolClientId: string;
       rdsInstance: rds.DatabaseInstance;
@@ -34,7 +32,6 @@ export class LambdaStack extends cdk.Stack {
     super(scope, id, props);
 
     const {
-      vpc,
       userPoolId,
       userPoolClientId,
       rdsInstance,
@@ -103,22 +100,6 @@ export class LambdaStack extends cdk.Stack {
 
     const dbPass = secret?.secretValueFromJson("password").unsafeUnwrap() || "";
 
-    const lambdaSecurityGroup = this.createLambdaSecurityGroup(
-      vpc,
-      true,
-      "LambdaSecurityGroup"
-    );
-    const migrationLambdaSecurityGroup = this.createLambdaSecurityGroup(
-      vpc,
-      true,
-      "MigrationLambdaSecurityGroup"
-    );
-    const cleanupLambdaSecurityGroup = this.createLambdaSecurityGroup(
-      vpc,
-      true,
-      "CleanupLambdaSecurityGroup"
-    );
-
     const environment = {
       COGNITO_USER_POOL_ID: userPoolId,
       COGNITO_APP_CLIENT_ID: userPoolClientId,
@@ -146,24 +127,18 @@ export class LambdaStack extends cdk.Stack {
     this.lambdaFunction = this.createLambdaFunction(
       lambdaRole,
       environment,
-      vpc,
-      lambdaSecurityGroup,
       "DeployedLambda",
       "lambda.handler"
     );
     this.migrationLambdaFunction = this.createLambdaFunction(
       migrationLambdaRole,
       environment,
-      vpc,
-      migrationLambdaSecurityGroup,
       "MigrationLambda",
       "migrate.handler"
     );
     this.cleanUpLambdaFunction = this.createLambdaFunction(
       migrationLambdaRole,
       environment,
-      vpc,
-      cleanupLambdaSecurityGroup,
       "CleanupLambda",
       "cleanup.handler"
     );
@@ -269,8 +244,6 @@ export class LambdaStack extends cdk.Stack {
   private createLambdaFunction = (
     role: iam.Role,
     environment: { [key: string]: string },
-    vpc: ec2.Vpc,
-    securityGroup: ec2.SecurityGroup,
     name: string,
     handler: string
   ) =>
@@ -282,11 +255,6 @@ export class LambdaStack extends cdk.Stack {
       timeout: cdk.Duration.minutes(2),
       role,
       environment,
-      vpc,
-      vpcSubnets: {
-        subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS,
-      },
-      securityGroups: [securityGroup],
     });
 
   private createLambdaRole = (name: string) =>
@@ -297,15 +265,5 @@ export class LambdaStack extends cdk.Stack {
           "service-role/AWSLambdaBasicExecutionRole"
         ),
       ],
-    });
-
-  private createLambdaSecurityGroup = (
-    vpc: ec2.Vpc,
-    allowOutbound: boolean,
-    name: string
-  ) =>
-    new ec2.SecurityGroup(this, name, {
-      vpc,
-      allowAllOutbound: allowOutbound,
     });
 }

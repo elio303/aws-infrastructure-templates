@@ -17,7 +17,7 @@ export class EventBridgeStack extends cdk.Stack {
     const { cleanUpLambdaFunction } = props;
 
     const rule = new events.Rule(this, "AutoDeclineRequestsRule", {
-      schedule: events.Schedule.rate(cdk.Duration.minutes(5)),
+      schedule: events.Schedule.rate(cdk.Duration.hours(1)),
     });
 
     rule.addTarget(new targets.LambdaFunction(cleanUpLambdaFunction));
